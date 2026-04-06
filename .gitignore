@@ -12,5 +12,6 @@ cloud_run_env.yaml
 data/
 *.pdf
 *.bak
+*.png
 cloud_run_help.txt
 Dockerfile.bak
