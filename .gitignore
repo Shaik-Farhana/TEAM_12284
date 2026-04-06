@@ -1,0 +1,7 @@
+.env.supabase
+.env.local
+.env
+cred.json
+app/core/cred.json
+data/
+cloud_run_services.json

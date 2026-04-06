@@ -1,0 +1,23 @@
+# Environments
+.env
+.env.*
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Credentials
+app/core/cred.json
+cred.json
+*.pem
+*.key
+
+# Docker
+.dockerignore
+
+# Testing
+.pytest_cache/
