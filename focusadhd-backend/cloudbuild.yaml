@@ -1,0 +1,38 @@
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '--tag', '$_TAG',
+      '.'
+    ]
+
+  # Push to Artifact Registry / Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '$_TAG']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'run', 'deploy', 'focusadhd-backend',
+      '--image', '$_TAG',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--service-account', 'shaikfarhana@stable-hydra-492506-d4.iam.gserviceaccount.com',
+      '--set-env-vars', 'DATABASE_URL=$_DATABASE_URL,SUPABASE_URL=$_SUPABASE_URL,SUPABASE_ANON_KEY=$_SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY=$_SUPABASE_SERVICE_ROLE_KEY,SUPABASE_JWT_SECRET=$_SUPABASE_JWT_SECRET,GEMINI_API_KEY=$_GEMINI_API_KEY,GCP_STORAGE_BUCKET=$_GCP_STORAGE_BUCKET,GOOGLE_CLOUD_PROJECT=stable-hydra-492506-d4,ENVIRONMENT=production,CORS_ORIGINS=$_CORS_ORIGINS'
+    ]
+
+images: ['$_TAG']
+
+substitutions:
+  _TAG: 'us-central1-docker.pkg.dev/stable-hydra-492506-d4/focusadhd/backend:latest'
+  _DATABASE_URL: ''
+  _SUPABASE_URL: ''
+  _SUPABASE_ANON_KEY: ''
+  _SUPABASE_SERVICE_ROLE_KEY: ''
+  _SUPABASE_JWT_SECRET: ''
+  _GEMINI_API_KEY: ''
+  _GCP_STORAGE_BUCKET: ''
+  _CORS_ORIGINS: ''

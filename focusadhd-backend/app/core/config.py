@@ -8,25 +8,26 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
     
-    # Supabase (will be read from .env)
+    # Supabase (Database & Auth)
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
     DATABASE_URL: str
+    
+    # Gemini API Key (fallback if Vertex AI fails)
     GEMINI_API_KEY: str
     
-    # GCP Keys
-    GCP_API_KEY: str = ""
-    GCP_STORAGE_BUCKET: str = ""
-    GCP_SERVICE_ACCOUNT_JSON: str = ""
-    GOOGLE_APPLICATION_CREDENTIALS: str = ""
+    # GCP Service Account
+    GCP_SERVICE_ACCOUNT_JSON: str = ""         # JSON string (for Cloud Run)
+    GOOGLE_APPLICATION_CREDENTIALS: str = ""   # File path (for local dev)
     
-    # Google Cloud / Vertex AI Defaults
-    GOOGLE_CLOUD_PROJECT: str = "capstone-491520" 
+    # Google Cloud Project Settings
+    GOOGLE_CLOUD_PROJECT: str = ""
     GOOGLE_CLOUD_REGION: str = "us-central1"
     
-    # Storage
-    SUPABASE_STORAGE_BUCKET: str = "learning-content"
+    # Cloud Storage
+    GCP_STORAGE_BUCKET: str = ""
+    GCS_SIGNED_URL_EXPIRY_MINUTES: int = 60    # Signed URL TTL
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env"),
