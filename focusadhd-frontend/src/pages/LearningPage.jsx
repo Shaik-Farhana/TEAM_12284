@@ -47,7 +47,6 @@ export function LearningPage() {
   const [answerFeedback, setAnswerFeedback] = useState(null);
   const [answeredQuestions, setAnsweredQuestions] = useState(new Set());
   const hasCompletedRef = useRef(false);
-  // Track exactly how long THIS sitting has been open (not the session's total lifetime)
   const sittingStartRef = useRef(Date.now());
 
   const [generatedImage, setGeneratedImage] = useState(null);
@@ -69,14 +68,17 @@ export function LearningPage() {
     fullText
   } = useAIStream(sessionId);
 
-  // Cleanup on unmount or tab close
   useEffect(() => {
     const handleUnload = () => {
       if (!hasCompletedRef.current && sessionId) {
         const elapsedSeconds = Math.round((Date.now() - sittingStartRef.current) / 1000);
         const token = localStorage.getItem("token") || "";
-        const url = `${API_BASE_URL}/sessions/${sessionId}/complete?access_token=${token}`;
-        navigator.sendBeacon(url, JSON.stringify({ elapsed_seconds: elapsedSeconds }));
+        fetch(`${API_BASE_URL}/sessions/${sessionId}/complete?access_token=${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ elapsed_seconds: elapsedSeconds }),
+          keepalive: true
+        }).catch(() => {});
       }
     };
 
@@ -88,7 +90,8 @@ export function LearningPage() {
   }, [sessionId]);
 
   // Fetch session details on mount
-  useEffect(() => {    async function loadSession() {
+  useEffect(() => {
+    async function loadSession() {
       try {
         const res = await fetchWithAuth(`/sessions/${sessionId}`);
         setTopic(res.topic);
@@ -96,7 +99,17 @@ export function LearningPage() {
         if (res.history && res.history.length > 0) {
             setInitialContent(res.history.join('\n\n'));
         }
-        
+
+        if (res.current_state !== 'Completed') {
+            const storedStart = localStorage.getItem(`session_start_${sessionId}`);
+            if (storedStart) {
+                const parsed = parseInt(storedStart, 10);
+                if (parsed && Date.now() - parsed < 8 * 60 * 60 * 1000) {
+                    sittingStartRef.current = parsed;
+                }
+            }
+        }
+
         try {
             const userRes = await fetchWithAuth('/users/me');
             setVisionEnabled(userRes.vision_enabled);
@@ -107,7 +120,7 @@ export function LearningPage() {
         } catch (e) {
             console.error("Could not fetch user settings");
         }
-        
+
         setHasStarted(true);
       } catch (err) {
         console.error("Failed to load session:", err);

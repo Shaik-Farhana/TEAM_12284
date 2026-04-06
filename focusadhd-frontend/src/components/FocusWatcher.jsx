@@ -171,7 +171,6 @@ export function FocusWatcher({ onDriftDetected, onStatusUpdate, onDistractionEnd
                 if (isUserAway) setIsUserAway(false);
             }
         } else {
-            lookAwayLabel = "Not in Frame";
             if (!awayStartTimeRef.current) awayStartTimeRef.current = now;
             const elapsedS = (now - awayStartTimeRef.current) / 1000;
             setAwayTimer(elapsedS);

@@ -50,6 +50,7 @@ export function DashboardPage() {
         method: 'POST',
         body: JSON.stringify({ topic: topic.trim() })
       });
+      localStorage.setItem(`session_start_${data.session_id}`, String(Date.now()));
       navigate(`/learn/${data.session_id}?topic=${encodeURIComponent(topic.trim())}`);
     } catch (err) {
       console.error(err);

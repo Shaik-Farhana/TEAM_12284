@@ -133,14 +133,12 @@ async def complete_session(session_id: str, req: CompleteSessionRequest = None, 
         dominant_state = analysis.get("state", "Focused")
 
         # 2. Persist to SessionAnalytics - ACCUMULATE if already exists for this session
-        from sqlalchemy.dialects.postgresql import insert
         existing_res = await db.execute(
             select(SessionAnalytics).where(SessionAnalytics.session_id == session.id)
         )
         existing = existing_res.scalars().first()
 
         if existing:
-            # Add this sitting's data on top of previous sittings
             existing.duration_seconds = existing.duration_seconds + this_sitting_seconds
             existing.total_distraction_seconds = min(
                 existing.total_distraction_seconds + distraction_seconds,
@@ -149,22 +147,14 @@ async def complete_session(session_id: str, req: CompleteSessionRequest = None, 
             existing.focus_seconds = max(0, existing.duration_seconds - existing.total_distraction_seconds)
             existing.dominant_state = dominant_state
         else:
-            stmt = insert(SessionAnalytics).values(
+            new_analytics = SessionAnalytics(
                 session_id=session.id,
                 duration_seconds=this_sitting_seconds,
                 total_distraction_seconds=distraction_seconds,
                 focus_seconds=focus_seconds,
                 dominant_state=dominant_state
-            ).on_conflict_do_update(
-                index_elements=['session_id'],
-                set_={
-                    "duration_seconds": this_sitting_seconds,
-                    "total_distraction_seconds": distraction_seconds,
-                    "focus_seconds": focus_seconds,
-                    "dominant_state": dominant_state
-                }
             )
-            await db.execute(stmt)
+            db.add(new_analytics)
 
         await db.commit()
     return {"status": "success"}
