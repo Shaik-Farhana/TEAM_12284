@@ -17,11 +17,19 @@ class VisualAgent:
         Generates an image using Imagen 3 via Vertex AI.
         Tries async first, then falls back to synchronous calls.
         """
-        # 1. Try Async (plural — generate_images)
+        # 1. Try Async
         try:
             if hasattr(client.aio.models, "generate_images"):
                 logger.info("VisualAgent: Attempting async generate_images")
-                response = await client.aio.models.generate_images(
+                func = client.aio.models.generate_images
+            elif hasattr(client.aio.models, "generate_image"):
+                logger.info("VisualAgent: Attempting async generate_image")
+                func = client.aio.models.generate_image
+            else:
+                func = None
+
+            if func:
+                response = await func(
                     model="imagen-3.0-generate-001",
                     prompt=prompt,
                     config=types.GenerateImagesConfig(
@@ -31,7 +39,7 @@ class VisualAgent:
                 if response.generated_images:
                     return response.generated_images[0].image.image_bytes
         except Exception as e:
-            logger.warning(f"VisualAgent: Async generate_images failed: {e}")
+            logger.warning(f"VisualAgent: Async generate failed: {e}")
 
         # 2. Try Sync (via thread to not block event loop)
         try:
@@ -39,8 +47,16 @@ class VisualAgent:
 
             if hasattr(client.models, "generate_images"):
                 logger.info("VisualAgent: Attempting sync generate_images fallback")
+                func = client.models.generate_images
+            elif hasattr(client.models, "generate_image"):
+                logger.info("VisualAgent: Attempting sync generate_image fallback")
+                func = client.models.generate_image
+            else:
+                func = None
+
+            if func:
                 response = await asyncio.to_thread(
-                    client.models.generate_images,
+                    func,
                     model="imagen-3.0-generate-001",
                     prompt=prompt,
                     config=types.GenerateImagesConfig(
@@ -50,7 +66,7 @@ class VisualAgent:
                 if response.generated_images:
                     return response.generated_images[0].image.image_bytes
         except Exception as e:
-            logger.error(f"VisualAgent: Sync generate_images failed: {e}")
+            logger.error(f"VisualAgent: Sync generate failed: {e}")
 
         # 3. All attempts failed
         logger.error(
