@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from typing import List
+from typing import List, Optional
 
 from app.db.database import get_db
 from app.core.auth import get_current_user
@@ -17,6 +17,9 @@ router = APIRouter()
 
 class SessionCreate(BaseModel):
     topic: str
+
+class CompleteSessionRequest(BaseModel):
+    elapsed_seconds: Optional[int] = None  # Actual time THIS sitting lasted
 
 @router.post("/")
 async def start_session(req: SessionCreate, db: AsyncSession = Depends(get_db), user: any = Depends(get_current_user)):
@@ -85,9 +88,10 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db), user:
     }
 
 @router.post("/{session_id}/complete")
-async def complete_session(session_id: str, db: AsyncSession = Depends(get_db), user: any = Depends(get_current_user)):
+async def complete_session(session_id: str, req: CompleteSessionRequest = None, db: AsyncSession = Depends(get_db), user: any = Depends(get_current_user)):
     """
-    Mark a session as completed. Used when cleanly ending or unmounting.
+    Mark a session as completed. Accumulates duration into SessionAnalytics.
+    Accepts elapsed_seconds from the frontend to avoid inflating resumed sessions.
     """
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
@@ -106,44 +110,61 @@ async def complete_session(session_id: str, db: AsyncSession = Depends(get_db), 
         )
         events = list(events_res.scalars().all())
         
-        # Total duration from creation to this completion call
-        # Ensure we use UTC for session.created_at if it's not already
-        start_time = session.created_at
-        if start_time.tzinfo is None:
-            from datetime import timezone
-            start_time = start_time.replace(tzinfo=timezone.utc)
-
-        duration = int((now - start_time).total_seconds())
-        if duration < 0: duration = 0
+        # Use frontend-provided elapsed_seconds if available (most accurate for resumed sessions).
+        # Fall back to (now - created_at) capped at 8 hours to prevent day-old session inflation.
+        if req and req.elapsed_seconds is not None and req.elapsed_seconds >= 0:
+            this_sitting_seconds = req.elapsed_seconds
+        else:
+            start_time = session.created_at
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+            raw_duration = int((now - start_time).total_seconds())
+            this_sitting_seconds = max(0, min(raw_duration, 28800))  # Cap at 8 hours
         
-        # Sum up specific periods of look-away/pause
+        # Sum up distraction events logged THIS session (from all time, not just this sitting)
         distraction_seconds = int(sum(e.pause_duration or 0 for e in events))
+        # Cap so distraction can't exceed total time this sitting
+        distraction_seconds = min(distraction_seconds, this_sitting_seconds)
         
-        # Focus time calculation
-        focus_seconds = max(0, duration - distraction_seconds)
+        focus_seconds = max(0, this_sitting_seconds - distraction_seconds)
         
         # Determine overall state for dashboard display
         analysis = behavior_analyzer.analyze_events(events)
         dominant_state = analysis.get("state", "Focused")
 
-        # 2. Persist to SessionAnalytics
-        # Use merge because user might call complete twice (defensive)
+        # 2. Persist to SessionAnalytics - ACCUMULATE if already exists for this session
         from sqlalchemy.dialects.postgresql import insert
-        stmt = insert(SessionAnalytics).values(
-            session_id=session.id,
-            duration_seconds=duration,
-            total_distraction_seconds=min(distraction_seconds, duration),
-            focus_seconds=focus_seconds,
-            dominant_state=dominant_state
-        ).on_conflict_do_update(
-            index_elements=['session_id'],
-            set_={
-                "duration_seconds": duration,
-                "total_distraction_seconds": min(distraction_seconds, duration),
-                "focus_seconds": focus_seconds,
-                "dominant_state": dominant_state
-            }
+        existing_res = await db.execute(
+            select(SessionAnalytics).where(SessionAnalytics.session_id == session.id)
         )
-        await db.execute(stmt)
+        existing = existing_res.scalars().first()
+
+        if existing:
+            # Add this sitting's data on top of previous sittings
+            existing.duration_seconds = existing.duration_seconds + this_sitting_seconds
+            existing.total_distraction_seconds = min(
+                existing.total_distraction_seconds + distraction_seconds,
+                existing.duration_seconds
+            )
+            existing.focus_seconds = max(0, existing.duration_seconds - existing.total_distraction_seconds)
+            existing.dominant_state = dominant_state
+        else:
+            stmt = insert(SessionAnalytics).values(
+                session_id=session.id,
+                duration_seconds=this_sitting_seconds,
+                total_distraction_seconds=distraction_seconds,
+                focus_seconds=focus_seconds,
+                dominant_state=dominant_state
+            ).on_conflict_do_update(
+                index_elements=['session_id'],
+                set_={
+                    "duration_seconds": this_sitting_seconds,
+                    "total_distraction_seconds": distraction_seconds,
+                    "focus_seconds": focus_seconds,
+                    "dominant_state": dominant_state
+                }
+            )
+            await db.execute(stmt)
+
         await db.commit()
     return {"status": "success"}

@@ -35,3 +35,7 @@ app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["Sessions"]
 app.include_router(learning.router, prefix="/api/v1/learning", tags=["Learning"])
 app.include_router(multimodal.router, prefix="/api/v1/multimodal", tags=["Multimodal"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "FocusADHD Backend", "version": "1.0.0"}

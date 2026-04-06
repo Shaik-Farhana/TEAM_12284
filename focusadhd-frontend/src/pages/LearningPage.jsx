@@ -47,6 +47,8 @@ export function LearningPage() {
   const [answerFeedback, setAnswerFeedback] = useState(null);
   const [answeredQuestions, setAnsweredQuestions] = useState(new Set());
   const hasCompletedRef = useRef(false);
+  // Track exactly how long THIS sitting has been open (not the session's total lifetime)
+  const sittingStartRef = useRef(Date.now());
 
   const [generatedImage, setGeneratedImage] = useState(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
@@ -71,10 +73,10 @@ export function LearningPage() {
   useEffect(() => {
     const handleUnload = () => {
       if (!hasCompletedRef.current && sessionId) {
-        // Use Beacon for reliability on close
+        const elapsedSeconds = Math.round((Date.now() - sittingStartRef.current) / 1000);
         const token = localStorage.getItem("token") || "";
         const url = `${API_BASE_URL}/sessions/${sessionId}/complete?access_token=${token}`;
-        navigator.sendBeacon(url);
+        navigator.sendBeacon(url, JSON.stringify({ elapsed_seconds: elapsedSeconds }));
       }
     };
 
@@ -264,8 +266,12 @@ export function LearningPage() {
         setCurrentQuestionIndex(0);
     } else {
         hasCompletedRef.current = true;
+        const elapsedSeconds = Math.round((Date.now() - sittingStartRef.current) / 1000);
         try {
-            await fetchWithAuth(`/sessions/${sessionId}/complete`, { method: 'POST' });
+            await fetchWithAuth(`/sessions/${sessionId}/complete`, {
+                method: 'POST',
+                body: JSON.stringify({ elapsed_seconds: elapsedSeconds })
+            });
         } catch (e) { console.error("Final completion failed", e); }
         setShowAnalytics(true);
     }

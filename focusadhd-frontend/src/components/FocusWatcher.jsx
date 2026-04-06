@@ -14,6 +14,14 @@ export function FocusWatcher({ onDriftDetected, onStatusUpdate, onDistractionEnd
   const lastProcessed = useRef(Date.now());
   const awayStartTimeRef = useRef(null);
   const [currentLabel, setCurrentLabel] = useState('Engaged');
+  // Keep refs to current values so cleanup callbacks can access them
+  const isUserAwayRef = useRef(false);
+  const awayTimerRef = useRef(0);
+  const onDistractionEndedRef = useRef(onDistractionEnded);
+  useEffect(() => { onDistractionEndedRef.current = onDistractionEnded; }, [onDistractionEnded]);
+  // Keep refs in sync with state so cleanup can read latest values
+  useEffect(() => { isUserAwayRef.current = isUserAway; }, [isUserAway]);
+  useEffect(() => { awayTimerRef.current = awayTimer; }, [awayTimer]);
   // Initialize MediaPipe
   useEffect(() => {
     async function initMediaPipe() {
@@ -69,6 +77,14 @@ export function FocusWatcher({ onDriftDetected, onStatusUpdate, onDistractionEnd
   };
 
   const stopCamera = () => {
+    // If user was away when camera stops, record that distraction now
+    if (isUserAwayRef.current && awayStartTimeRef.current) {
+      const elapsed = (Date.now() - awayStartTimeRef.current) / 1000;
+      if (elapsed > 1.2) {
+        onDistractionEndedRef.current?.(Math.round(elapsed * 10) / 10);
+      }
+      awayStartTimeRef.current = null;
+    }
     if (stream) stream.getTracks().forEach(track => track.stop());
     setStream(null);
     setIsWatching(false);
@@ -173,7 +189,17 @@ export function FocusWatcher({ onDriftDetected, onStatusUpdate, onDistractionEnd
     };
 
     requestRef = requestAnimationFrame(detect);
-    return () => cancelAnimationFrame(requestRef);
+    return () => {
+      cancelAnimationFrame(requestRef);
+      // On unmount/stop — flush any in-progress away period so it isn't lost
+      if (isUserAwayRef.current && awayStartTimeRef.current) {
+        const elapsed = (Date.now() - awayStartTimeRef.current) / 1000;
+        if (elapsed > 1.2) {
+          onDistractionEndedRef.current?.(Math.round(elapsed * 10) / 10);
+        }
+        awayStartTimeRef.current = null;
+      }
+    };
   }, [faceLandmarker, isWatching, isUserAway, onDriftDetected, onDistractionEnded]);
 
   return (

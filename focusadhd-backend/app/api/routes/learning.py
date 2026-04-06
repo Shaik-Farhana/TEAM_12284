@@ -11,6 +11,7 @@ from app.models.behavior_event import BehaviorEvent
 from app.models.learning_session import LearningSession
 from app.models.user_settings import UserSettings
 from app.models.session_content import SessionContent
+from app.models.session_analytics import SessionAnalytics
 from app.schemas.behavior import BehaviorEventCreate
 from app.services.behavior_analyzer import behavior_analyzer
 from app.services.moderation import moderation_service
@@ -38,9 +39,16 @@ async def get_session_history(session_id: str, db: AsyncSession = Depends(get_db
 @router.get("/{session_id}/analytics")
 async def get_session_analytics(session_id: str, db: AsyncSession = Depends(get_db), user: any = Depends(get_current_user)):
     """
-    Generate analytics for the session: focus score, drift count, and timeline.
+    Return analytics for the session from the SessionAnalytics table.
+    Falls back to on-the-fly calculation if session hasn't been completed yet.
     """
-    # Fetch all activity (Events + Content generations) to find the "latest block" of activity
+    # Try SessionAnalytics table first (populated on complete)
+    analytics_res = await db.execute(
+        select(SessionAnalytics).where(SessionAnalytics.session_id == session_id)
+    )
+    analytics = analytics_res.scalars().first()
+
+    # Also get drift events for the timeline
     drift_result = await db.execute(
         select(BehaviorEvent)
         .where(BehaviorEvent.session_id == session_id)
@@ -49,67 +57,42 @@ async def get_session_analytics(session_id: str, db: AsyncSession = Depends(get_
     )
     all_drifts = drift_result.scalars().all()
 
-    content_result = await db.execute(
-        select(SessionContent.created_at)
-        .where(SessionContent.session_id == session_id)
-        .order_by(SessionContent.created_at.asc())
-    )
-    all_content_times = content_result.scalars().all()
+    if analytics:
+        total_seconds = analytics.duration_seconds or 0
+        total_distraction_time = analytics.total_distraction_seconds or 0
+        focus_score = round(analytics.focus_seconds / total_seconds * 100, 1) if total_seconds > 0 else 100
+    else:
+        # Session not yet completed — calculate on the fly from events
+        sess_result = await db.execute(select(LearningSession.created_at).where(LearningSession.id == session_id))
+        session_start = sess_result.scalar_one_or_none()
 
-    sess_result = await db.execute(select(LearningSession.created_at).where(LearningSession.id == session_id))
-    session_start = sess_result.scalar_one_or_none()
-
-    # Combine all timestamps to find the most recent continuous block (separated by >30 mins)
-    all_timestamps = [session_start] if session_start else []
-    all_timestamps.extend([d.created_at for d in all_drifts])
-    all_timestamps.extend(all_content_times)
-    
-    # Sort timestamps, drop None just in case
-    all_timestamps = sorted([ts for ts in all_timestamps if ts])
-
-    latest_block_start = all_timestamps[0] if all_timestamps else None
-    for i in range(1, len(all_timestamps)):
-        gap = (all_timestamps[i] - all_timestamps[i-1]).total_seconds()
-        if gap > 1800:  # 30 minutes gap means a new session block started!
-            latest_block_start = all_timestamps[i]
-
-    # Filter drifts to only those in the latest block
-    valid_drifts = [d for d in all_drifts if d.created_at >= latest_block_start] if latest_block_start else []
-
-    # Calculate precise duration using UTC now
-    from datetime import datetime, timezone
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None) # Depending on DB tz
-    # Fallback to last event time if tz mismatch makes now_utc weird
-    last_event_time = all_timestamps[-1] if all_timestamps else now_utc
-    
-    total_seconds = 0
-    if latest_block_start:
-        total_seconds = max((last_event_time - latest_block_start).total_seconds(), 0)
-        # Pad duration slightly if it's too short (e.g., they just started and ended)
-        if total_seconds < 30:
-            total_seconds = 30 
-    
-    total_distraction_time = min(total_seconds, sum(d.pause_duration for d in valid_drifts if d.pause_duration))
-    focus_score = 100
-    if total_seconds > 0:
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        total_seconds = max(30, int((now_utc - session_start).total_seconds()) if session_start else 30)
+        total_distraction_time = min(total_seconds, sum(d.pause_duration for d in all_drifts if d.pause_duration))
         focus_score = max(0, min(100, 100 * (1 - (total_distraction_time / (total_seconds + 0.001)))))
-    
-    # Estimate Duration in minutes for UI display
+        focus_score = round(focus_score, 1)
+
+    # Format duration
     duration_min = round(total_seconds / 60, 1)
     if duration_min < 1:
         duration_display = f"{int(total_seconds)}s"
-    else:
+    elif duration_min < 60:
         duration_display = f"{duration_min}m"
+    else:
+        hours = int(total_seconds // 3600)
+        mins = int((total_seconds % 3600) // 60)
+        duration_display = f"{hours}h {mins}m"
 
     return {
-        "focus_score": round(focus_score, 1),
-        "total_drifts": len(valid_drifts),
+        "focus_score": focus_score,
+        "total_drifts": len(all_drifts),
         "total_distraction_time": round(total_distraction_time, 1),
         "session_duration_seconds": round(total_seconds, 1),
         "duration_display": duration_display,
         "timeline": [
-            {"timestamp": d.created_at, "duration": d.pause_duration} 
-            for d in valid_drifts
+            {"timestamp": d.created_at, "duration": d.pause_duration}
+            for d in all_drifts
         ]
     }
 
