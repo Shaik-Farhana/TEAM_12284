@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Google Cloud Project Settings
     GOOGLE_CLOUD_PROJECT: str = ""
     GOOGLE_CLOUD_REGION: str = "us-central1"
+    GOOGLE_CLOUD_SERVICE_ACCOUNT: str = ""     # Service Account email
     
     # Cloud Storage
     GCP_STORAGE_BUCKET: str = ""

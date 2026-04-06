@@ -1,10 +1,10 @@
 from google import genai
 from google.genai import types
 from app.core.config import settings
+from app.core.gcp_clients import get_genai_client
 
-# Initialize Gemini Client (already setup in text_agent, reusing here)
-# or just re-importing config
-client = genai.Client(api_key=settings.GEMINI_API_KEY)
+# Initialize Gemini Client via centralized module (using Vertex AI in production)
+client = get_genai_client(use_vertex=True)
 
 class AudioAgent:
     async def generate_speech(self, text: str) -> bytes:

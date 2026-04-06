@@ -156,17 +156,25 @@ def upload_to_gcs(
         blob.upload_from_string(data, content_type=content_type)
         logger.info(f"GCS upload OK: gs://{bucket_name}/{filename}")
 
-        # Strategy 1: Try signed URL (works with service_account credentials)
+        # Strategy 1: Try signed URL
         try:
-            from google.oauth2 import service_account as sa_mod
-            if isinstance(_credentials, sa_mod.Credentials):
+            # To sign on Cloud Run, we need the Service Account email.
+            # We try: 1. settings, 2. client's resolved email, 3. credential's email
+            sa_email = settings.GOOGLE_CLOUD_SERVICE_ACCOUNT
+            if not sa_email:
+                sa_email = getattr(client, "service_account_email", None)
+            if not sa_email and hasattr(_credentials, "service_account_email"):
+                sa_email = _credentials.service_account_email
+
+            if sa_email:
                 expiry = timedelta(minutes=settings.GCS_SIGNED_URL_EXPIRY_MINUTES)
                 signed_url = blob.generate_signed_url(
                     version="v4",
                     expiration=expiry,
                     method="GET",
+                    service_account_email=sa_email,
                 )
-                logger.info(f"Signed URL generated for {filename}")
+                logger.info(f"Signed URL generated for {filename} using {sa_email}")
                 return {"url": signed_url, "type": "url"}
         except Exception as e:
             logger.debug(f"Signed URL generation skipped/failed: {e}")

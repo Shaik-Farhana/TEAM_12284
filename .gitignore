@@ -1,7 +1,16 @@
-.env.supabase
-.env.local
+# Secrets & credentials
 .env
+.env.*
+.env.local
+.env.supabase
 cred.json
 app/core/cred.json
-data/
 cloud_run_services.json
+cloud_run_env.yaml
+
+# Data & large files
+data/
+*.pdf
+*.bak
+cloud_run_help.txt
+Dockerfile.bak

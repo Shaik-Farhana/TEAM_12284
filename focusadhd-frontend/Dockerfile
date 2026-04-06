@@ -10,7 +10,7 @@ RUN npm ci
 # Copy sources
 COPY . .
 
-# Set build-time variables (passed via --build-arg or cloudbuild.yaml)
+# Set build-time variables
 ARG VITE_API_BASE_URL
 ARG VITE_SUPABASE_URL
 ARG VITE_SUPABASE_ANON_KEY

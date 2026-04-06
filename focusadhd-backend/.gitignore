@@ -16,8 +16,15 @@ cred.json
 *.pem
 *.key
 
-# Docker
+# GCP / Docker
 .dockerignore
+cloud_run_env.yaml
+cloud_run_help.txt
+
+# Dev-only scripts
+migrate_vision.py
+run_migrations.py
+seed.py
 
 # Testing
 .pytest_cache/

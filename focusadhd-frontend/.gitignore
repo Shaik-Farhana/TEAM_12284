@@ -26,3 +26,7 @@ dist-ssr
 # Environment Files
 .env
 .env.*
+
+# Backup & build artifacts
+*.bak
+Dockerfile.bak
