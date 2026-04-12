@@ -6,7 +6,7 @@ steps:
     '--build-arg', 'VITE_API_BASE_URL=https://focusadhd-backend-740073113612.us-central1.run.app',
     '--build-arg', 'VITE_SUPABASE_URL=https://awcdikkmuqdtycpiuffu.supabase.co',
     '--build-arg', 'VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3Y2Rpa2ttdXFkdHljcGl1ZmZ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ2MjQ1MTUsImV4cCI6MjA5MDIwMDUxNX0.TRC2l2MKZPnZXjaR82-JTD6gwtsn0UAHK3Tubxm_tkA',
-    'focusadhd-frontend'
+    '.'
   ]
 
 - name: 'gcr.io/cloud-builders/docker'
